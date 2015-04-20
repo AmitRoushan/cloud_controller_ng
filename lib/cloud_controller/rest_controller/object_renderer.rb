@@ -2,12 +2,14 @@ require 'addressable/uri'
 
 module VCAP::CloudController::RestController
   class ObjectRenderer
+    attr_reader :collection_transformer
     def initialize(eager_loader, serializer, opts)
       @eager_loader = eager_loader
       @serializer = serializer
 
       @max_inline_relations_depth = opts.fetch(:max_inline_relations_depth)
       @default_inline_relations_depth = 0
+      @collection_transformer = opts[:collection_transformer]
     end
 
     # Render an object to json, using export and security properties
@@ -42,6 +44,8 @@ module VCAP::CloudController::RestController
 
       eager_loaded_object = eager_loaded_objects.where(id: obj.id).all.first
 
+      transform_opts = opts[:transform_opts] || {}
+      collection_transformer.transform(eager_loaded_object, transform_opts) if collection_transformer
       # The class of object and eager_loaded_object could be different
       # if they are part of STI. Attributes exported by the object
       # are the ones that are expected in the response.

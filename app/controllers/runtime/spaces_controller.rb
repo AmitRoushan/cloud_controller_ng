@@ -1,7 +1,8 @@
+require 'actions/space_delete'
 module VCAP::CloudController
   class SpacesController < RestController::ModelController
     def self.dependencies
-      [:space_event_repository]
+      [:space_event_repository, :quota_usage_populating_collection_renderer]
     end
 
     define_attributes do
@@ -37,6 +38,21 @@ module VCAP::CloudController
     def inject_dependencies(dependencies)
       super
       @space_event_repository = dependencies.fetch(:space_event_repository)
+      @quota_usage_collection_renderer = dependencies.fetch(:quota_usage_populating_collection_renderer)
+    end
+    get '/v2/spaces/:guid/quota_usage', :enumerate_quota_usage
+    def enumerate_quota_usage(guid)
+      logger.debug('cc.enumerate.related', guid: guid, association: 'quota_usage')
+      space = find_guid_and_validate_access(:read, guid)
+      associated_controller, associated_model = SpaceQuotaDefinitionsController, SpaceQuotaDefinition
+      associated_path = "#{self.class.url_for_guid(guid)}/quota_usage"
+      ds = find_guid_and_validate_access(:read, space.space_quota_definition.guid, associated_model)
+      opts = @opts.merge(transform_opts: { space_id: space.id })
+      @quota_usage_collection_renderer.render_json(
+        associated_controller,
+        ds,
+        opts,
+      )
     end
 
     get '/v2/spaces/:guid/services', :enumerate_services
@@ -100,8 +116,18 @@ module VCAP::CloudController
 
     def delete(guid)
       space = find_guid_and_validate_access(:delete, guid)
+      raise_if_has_associations!(space) if v2_api? && !recursive?
+      if !space.app_models.empty? && !recursive?
+        raise VCAP::Errors::ApiError.new_from_details('AssociationNotEmpty', 'app_model', Space.table_name)
+      end
+      if !space.service_instances.empty? && !recursive?
+        raise VCAP::Errors::ApiError.new_from_details('AssociationNotEmpty', 'service_instances', Space.table_name)
+      end
       @space_event_repository.record_space_delete_request(space, SecurityContext.current_user, SecurityContext.current_user_email, recursive?)
-      do_delete(space)
+
+      delete_action = SpaceDelete.new(current_user.id, current_user_email)
+      deletion_job = VCAP::CloudController::Jobs::DeleteActionJob.new(Space, guid, delete_action)
+      enqueue_deletion_job(deletion_job)
     end
 
     private
