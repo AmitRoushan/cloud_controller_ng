@@ -400,26 +400,28 @@ describe CloudController::DependencyLocator do
       renderer = locator.quota_usage_populating_renderer
       expect(renderer.transformer).to be_a(VCAP::CloudController::QuotaUsagePopulator)
     end
-  end
 
-  describe '#created_object_renderer' do
+    it 'returns object renderer' do
+      expect(locator.quota_usage_populating_renderer).to be_an_instance_of(VCAP::CloudController::RestController::ObjectRenderer)
+    end
+
     it 'returns object renderer configured via config' do
       eager_loader = instance_of(VCAP::CloudController::RestController::SecureEagerLoader)
       serializer = instance_of(VCAP::CloudController::RestController::PreloadedObjectSerializer)
-      opts = {
+      opt = {
         max_inline_relations_depth: 100_002,
-        transformer: nil
       }
 
-      TestConfig.override(renderer: opts)
+      TestConfig.override(renderer: opt)
 
-      renderer = double('renderer')
       expect(VCAP::CloudController::RestController::ObjectRenderer).
         to receive(:new).
-        with(eager_loader, serializer, opts).
-        and_return(renderer)
+        with(eager_loader, serializer, an_instance_of(Hash)) do |loader, ser, opts|
+          expect(opts[:max_inline_relations_depth]).to eql(100_002)
+          expect(opts[:transformer]).to be_an_instance_of(VCAP::CloudController::QuotaUsagePopulator)
+        end
 
-      expect(locator.created_object_renderer).to eq(renderer)
+      locator.quota_usage_populating_renderer
     end
   end
 

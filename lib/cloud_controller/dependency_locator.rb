@@ -201,10 +201,6 @@ module CloudController
       create_paginated_collection_renderer
     end
 
-    def created_object_renderer
-      create_object_renderer
-    end
-
     def large_paginated_collection_renderer
       create_paginated_collection_renderer(max_results_per_page: LARGE_COLLECTION_SIZE)
     end
